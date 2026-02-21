@@ -55,8 +55,8 @@ const statusLabels=["In afwachting","Printen","Geprint","Afwerking"];
 const statusColors=["bg-red-500","bg-orange-400","bg-green-400","bg-green-600"];
 
 // 🔹 Vul hier je Supabase gegevens in
-const SUPABASE_URL = "https://jnsujwzhwswxemknrtyw.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impuc3Vqd3pod3N3eGVta25ydHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2NzI4NzQsImV4cCI6MjA4NzI0ODg3NH0.Mz_w2umjuQpDA0mM2zzwnDYPpLaJLVzuN2ISX3MS1vM";
+const SUPABASE_URL = https://jnsujwzhwswxemknrtyw.supabase.co;
+const SUPABASE_ANON_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impuc3Vqd3pod3N3eGVta25ydHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2NzI4NzQsImV4cCI6MjA4NzI0ODg3NH0.Mz_w2umjuQpDA0mM2zzwnDYPpLaJLVzuN2ISX3MS1vM;
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let orders=[];
@@ -217,4 +217,5 @@ supabase.from('orders').on('INSERT', fetchOrders).on('UPDATE', fetchOrders).on('
 
 </script>
 </body>
+
 </html>
