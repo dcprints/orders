@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Cockpit Supabase</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+</head>
+
+<body class="bg-[#f5efe6]">
+<div class="max-w-6xl mx-auto p-4">
+<div class="grid md:grid-cols-3 gap-6">
+
+<!-- Orders -->
+<div class="md:col-span-2">
+<h1 class="text-2xl font-bold mb-4">📦 Orders</h1>
+
+<div class="bg-white p-4 rounded-2xl shadow mb-6 space-y-3">
+<input id="product" class="w-full p-2 border rounded-xl" placeholder="Product">
+<input id="customer" class="w-full p-2 border rounded-xl" placeholder="Klant">
+<input id="price" type="number" class="w-full p-2 border rounded-xl" placeholder="Prijs (€)">
+<input id="delivery" type="date" class="w-full p-2 border rounded-xl">
+<button onclick="addOrder()" class="w-full bg-black text-white p-2 rounded-xl">
+Toevoegen
+</button>
+</div>
+
+<div class="flex gap-2 mb-4">
+<button onclick="toggleCurrentYear()" class="bg-gray-800 text-white px-4 py-2 rounded-xl">
+📁 Toon enkel huidig jaar
+</button>
+</div>
+
+<div id="orders"></div>
+</div>
+
+<!-- Overzicht -->
+<div class="bg-white p-6 rounded-2xl shadow h-fit sticky top-4">
+<h2 class="text-xl font-semibold mb-4">Overzicht totaal</h2>
+<div class="space-y-2 text-lg">
+<div>Totaal: €<span id="total">0</span></div>
+<div class="text-red-600">Openstaand: €<span id="open">0</span></div>
+<div class="text-green-600">Betaald: €<span id="paidTotal">0</span></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<script>
+const statusLabels=["In afwachting","Printen","Geprint","Afwerking"];
+const statusColors=["bg-red-500","bg-orange-400","bg-green-400","bg-green-600"];
+
+// 🔹 Vul hier je Supabase gegevens in
+const SUPABASE_URL = "https://jnsujwzhwswxemknrtyw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impuc3Vqd3pod3N3eGVta25ydHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2NzI4NzQsImV4cCI6MjA4NzI0ODg3NH0.Mz_w2umjuQpDA0mM2zzwnDYPpLaJLVzuN2ISX3MS1vM";
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let orders=[];
+let showCurrentYearOnly=false;
+let collapsedYears={};
+
+// 💾 Data functies
+async function fetchOrders(){
+  const { data } = await supabase.from('orders').select('*').order('id',{ascending:false});
+  orders = data || [];
+  render();
+}
+
+async function saveOrder(order){ await supabase.from('orders').upsert(order); }
+async function deleteOrder(id){ await supabase.from('orders').delete().eq('id', id); }
+
+function toggleCurrentYear(){ showCurrentYearOnly=!showCurrentYearOnly; render(); }
+
+// Toevoegen / bewerken
+async function addOrder(){
+  const product=document.getElementById("product").value;
+  const customer=document.getElementById("customer").value;
+  const price=parseFloat(document.getElementById("price").value);
+  const delivery=document.getElementById("delivery").value;
+  if(!product||!customer||!price) return;
+
+  const order={id:Date.now(), year:new Date().getFullYear(), product, customer, price, delivery, paid:false, status:0};
+  orders.push(order);
+  await saveOrder(order);
+  document.querySelectorAll("input").forEach(i=>i.value="");
+  render();
+}
+
+async function togglePaid(id){
+  const o=orders.find(x=>x.id===id);
+  o.paid=!o.paid;
+  await saveOrder(o);
+  render();
+}
+
+async function updateStatus(id,val){
+  const o=orders.find(x=>x.id===id);
+  o.status=parseInt(val);
+  if(o.status>0 && !(o.status===3 && o.paid)){
+    orders = orders.filter(x=>x.id!==id);
+    orders.unshift(o);
+  }
+  await saveOrder(o);
+  render();
+}
+
+async function removeOrder(id){
+  orders=orders.filter(o=>o.id!==id);
+  await deleteOrder(id);
+  render();
+}
+
+// Excel export
+function exportYear(year){
+  const data=orders.filter(o=>o.year==year).map(o=>({
+    Product:o.product,
+    Klant:o.customer,
+    Prijs:o.price,
+    Leverdatum:o.delivery,
+    Betaald:o.paid?"Ja":"Nee",
+    Status:statusLabels[o.status]
+  }));
+  const ws=XLSX.utils.json_to_sheet(data);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Orders "+year);
+  XLSX.writeFile(wb, "orders_"+year+".xlsx");
+}
+
+// Render functie
+function render(){
+  const container=document.getElementById("orders");
+  container.innerHTML="";
+  let total=0,open=0,paidTotal=0;
+  const currentYear=new Date().getFullYear();
+  const years=[...new Set(orders.map(o=>o.year))].sort((a,b)=>b-a);
+
+  years.forEach(year=>{
+    if(showCurrentYearOnly && year!==currentYear) return;
+    const yearOrders=orders.filter(o=>o.year===year);
+    const yearTotal=yearOrders.reduce((s,o)=>s+o.price,0);
+    const yearPaid=yearOrders.filter(o=>o.paid).reduce((s,o)=>s+o.price,0);
+    const yearOpen=yearTotal-yearPaid;
+
+    container.innerHTML+=`
+      <div class="mt-8">
+        <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow cursor-pointer"
+          onclick="collapsedYears[${year}]=!collapsedYears[${year}]; render();">
+          <div class="font-bold text-lg">${year}</div>
+          <div class="text-sm">Totaal €${yearTotal.toFixed(2)} | <span class="text-red-600">Open €${yearOpen.toFixed(2)}</span> | <span class="text-green-600">Betaald €${yearPaid.toFixed(2)}</span></div>
+        </div>
+        <div class="flex justify-end mt-2">
+          <button onclick="exportYear(${year})" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">📄 Export ${year}</button>
+        </div>
+        <div id="year_${year}" class="space-y-3 mt-3 ${collapsedYears[year]?'hidden':''}"></div>
+      </div>
+    `;
+
+    const yearContainer=document.getElementById("year_"+year);
+    const topOrders=yearOrders.filter(o=>!(o.status===3 && o.paid));
+    const bottomOrders=yearOrders.filter(o=>o.status===3 && o.paid);
+
+    topOrders.concat(bottomOrders).forEach(order=>{
+      total+=order.price; if(order.paid) paidTotal+=order.price; else open+=order.price;
+
+      yearContainer.innerHTML+=`
+      <div class="bg-white p-4 rounded-2xl shadow space-y-2 flex gap-3 items-start ${order.status===3 && order.paid?'opacity-50 line-through':''}" data-id="${order.id}">
+        <div class="cursor-move text-gray-400 pt-2">☰</div>
+        <div class="flex-1 space-y-2">
+          <div class="flex justify-between">
+            <div>
+              <div class="font-semibold">${order.product}</div>
+              <div class="text-sm text-gray-500">${order.customer}</div>
+              <div class="text-sm">€${order.price}</div>
+              <div class="text-sm">${order.delivery||""}</div>
+            </div>
+            <div class="flex flex-col items-end gap-2">
+              <button onclick="togglePaid(${order.id})" class="px-3 py-1 rounded-full text-sm text-white ${order.paid?'bg-green-500':'bg-red-500'}">${order.paid?'Betaald':'Niet betaald'}</button>
+              <select onchange="updateStatus(${order.id},this.value)" class="text-xs border rounded">
+                ${statusLabels.map((l,i)=>`<option value="${i}" ${order.status===i?'selected':''}>${l}</option>`).join("")}
+              </select>
+              <button onclick="removeOrder(${order.id})" class="text-red-600 text-xs mt-1">🗑 Verwijderen</button>
+            </div>
+          </div>
+          <div class="w-full h-3 rounded-full bg-gray-200 overflow-hidden">
+            <div class="h-3 ${statusColors[order.status]}" style="width:${(order.status+1)*25}%"></div>
+          </div>
+        </div>
+      </div>
+      `;
+    });
+  });
+
+  document.getElementById("total").innerText=total.toFixed(2);
+  document.getElementById("open").innerText=open.toFixed(2);
+  document.getElementById("paidTotal").innerText=paidTotal.toFixed(2);
+
+  new Sortable(container,{
+    animation:150,
+    handle:'.cursor-move',
+    onEnd:function(evt){
+      const ids=[...container.querySelectorAll('[data-id]')].map(el=>parseInt(el.dataset.id));
+      orders=ids.map(id=>orders.find(o=>o.id===id));
+      orders.forEach(o=>saveOrder(o));
+    }
+  });
+}
+
+// Initial load
+fetchOrders();
+
+// Realtime updates
+supabase.from('orders').on('INSERT', fetchOrders).on('UPDATE', fetchOrders).on('DELETE', fetchOrders).subscribe();
+
+</script>
+</body>
+</html>
